@@ -6,6 +6,7 @@ import {
   tubeWeightKg,
 } from '../../shared/format';
 import { METHOD_RULES, type Material, type Part, type PlanResult } from '../../shared/types';
+import { formatBarRange, groupBars } from '../../shared/group';
 import { downloadText, makeFilename } from './download';
 
 function num(value: number, digits = 2): string {
@@ -99,14 +100,16 @@ export function partsCsv(parts: Part[], materials: Material[]): string {
 
 export function planCsv(name: string, result: PlanResult): string {
   const rows: (string | number)[][] = [];
-  for (const bar of result.bars) {
+  for (const group of groupBars(result.bars)) {
+    const bar = group.sample;
     for (const piece of bar.pieces) {
       rows.push([
         name,
         METHOD_RULES[result.cutMethod].label,
         num(result.kerfMm),
         num(result.clampMm),
-        bar.barNo,
+        formatBarRange(group.barNos),
+        group.count,
         bar.materialCode,
         bar.materialName,
         bar.spec,
@@ -118,7 +121,10 @@ export function planCsv(name: string, result: PlanResult): string {
         num(piece.weightKg, 3),
         num(bar.stockLength),
         num(bar.leftoverLength),
+        num(group.totalLeftoverLength),
         num(bar.utilization * 100, 1),
+        num(bar.weightKg, 3),
+        num(group.totalWeightKg, 3),
       ]);
     }
   }
@@ -130,6 +136,7 @@ export function planCsv(name: string, result: PlanResult): string {
       '切口宽度(mm)',
       '夹持余量(mm)',
       '原料根号',
+      '重复根数',
       '原料编号',
       '原料名称',
       '原料规格',
@@ -140,8 +147,11 @@ export function planCsv(name: string, result: PlanResult): string {
       '切割长度(mm)',
       '单件重量(kg)',
       '原料长度(mm)',
-      '该根余料(mm)',
-      '该根利用率(%)',
+      '单根余料(mm)',
+      '合计余料(mm)',
+      '该排样利用率(%)',
+      '单根零件重(kg)',
+      '合计零件重(kg)',
     ],
     rows,
   );

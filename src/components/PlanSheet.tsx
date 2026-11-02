@@ -7,6 +7,7 @@ import {
   formatWeight,
 } from '../../shared/format';
 import { METHOD_RULES, type PlanResult } from '../../shared/types';
+import { formatBarRange, groupBars } from '../../shared/group';
 
 interface PlanSheetProps {
   name: string;
@@ -22,6 +23,7 @@ export const PlanSheet = forwardRef<HTMLDivElement, PlanSheetProps>(function Pla
   const generatedAt = createdAt ?? result.generatedAt;
   const rule = METHOD_RULES[result.cutMethod];
   const hasWarnings = result.warnings.length > 0 || result.unplaced.length > 0;
+  const patternGroups = groupBars(result.bars);
 
   return (
     <div ref={ref} className="plan-sheet">
@@ -132,7 +134,7 @@ export const PlanSheet = forwardRef<HTMLDivElement, PlanSheetProps>(function Pla
 
       <div className="sheet-bars">
         {result.summaries.map((summary) => {
-          const bars = result.bars.filter((bar) => bar.materialId === summary.materialId);
+          const groups = patternGroups.filter((group) => group.materialId === summary.materialId);
           return (
             <section key={summary.materialId} className="sheet-material-block">
               <div className="sheet-material-title">
@@ -146,41 +148,55 @@ export const PlanSheet = forwardRef<HTMLDivElement, PlanSheetProps>(function Pla
                 </div>
               </div>
 
-              {bars.map((bar) => (
-                <div key={bar.barNo} className="sheet-bar">
-                  <div className="sheet-bar-head">
-                    <div>
-                      <span className="sheet-bar-no">#{String(bar.barNo).padStart(2, '0')}</span>
-                      <strong>
-                        {bar.pieces.length} 件 / 零件长 {formatNumber(bar.partsLength, 0)} mm
-                      </strong>
+              {groups.map((group) => {
+                const bar = group.sample;
+                const repeated = group.count > 1;
+                return (
+                  <div key={group.key} className="sheet-bar">
+                    <div className="sheet-bar-head">
+                      <div>
+                        <span className="sheet-bar-no">{formatBarRange(group.barNos)}</span>
+                        <strong>
+                          {repeated ? `${group.count} 根同排样 · ` : ''}
+                          {bar.pieces.length} 件/根 · 零件长 {formatNumber(bar.partsLength, 0)} mm
+                        </strong>
+                      </div>
+                      <div>
+                        {repeated ? `重复 ${group.count} 根 · ` : ''}
+                        单根余料 {formatNumber(bar.leftoverLength, 0)} mm · 利用率{' '}
+                        {formatPercent(bar.utilization)}
+                      </div>
                     </div>
-                    <div>
-                      余料 {formatNumber(bar.leftoverLength, 0)} mm · 利用率 {formatPercent(bar.utilization)}
+
+                    <BarDiagram bar={bar} showScale={false} />
+
+                    <div className="sheet-cut-list">
+                      {bar.pieces.map((piece) => (
+                        <span key={`${group.key}-${piece.sequence}`} className="sheet-cut-item">
+                          <b>{piece.sequence}</b>
+                          {piece.partCode} {piece.partName}
+                          <em>{formatNumber(piece.length, 1)}</em>
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="sheet-bar-foot">
+                      <span>原料 {formatNumber(bar.stockLength, 0)} mm</span>
+                      <span>切口 {formatNumber(bar.kerfTotal, 1)} mm</span>
+                      <span>单根余料 {formatNumber(bar.leftoverLength, 1)} mm</span>
+                      <span>夹持 {formatNumber(bar.clampLength, 0)} mm</span>
+                      <span>单根零件重 {formatWeight(bar.weightKg)}</span>
+                      {repeated ? (
+                        <>
+                          <span>重复 {group.count} 根</span>
+                          <span>合计余料 {formatNumber(group.totalLeftoverLength, 0)} mm</span>
+                          <span>合计零件重 {formatWeight(group.totalWeightKg)}</span>
+                        </>
+                      ) : null}
                     </div>
                   </div>
-
-                  <BarDiagram bar={bar} showScale={false} />
-
-                  <div className="sheet-cut-list">
-                    {bar.pieces.map((piece) => (
-                      <span key={`${bar.barNo}-${piece.sequence}`} className="sheet-cut-item">
-                        <b>{piece.sequence}</b>
-                        {piece.partCode} {piece.partName}
-                        <em>{formatNumber(piece.length, 1)}</em>
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="sheet-bar-foot">
-                    <span>原料 {formatNumber(bar.stockLength, 0)} mm</span>
-                    <span>切口 {formatNumber(bar.kerfTotal, 1)} mm</span>
-                    <span>余料 {formatNumber(bar.leftoverLength, 1)} mm</span>
-                    <span>夹持 {formatNumber(bar.clampLength, 0)} mm</span>
-                    <span>单根零件重 {formatWeight(bar.weightKg)}</span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </section>
           );
         })}
@@ -196,7 +212,7 @@ export const PlanSheet = forwardRef<HTMLDivElement, PlanSheetProps>(function Pla
               : ' 锯床切割无夹持余量，切口宽度已按设置扣除。'}
           </p>
           <p>
-            2. 图示从左至右为下料顺序，深色数字为切割序号；斜纹区域为余料，网格区域为夹持区。
+            2. 相同排样已合并，标注了重复根数和对应根号；图示从左至右为单根下料顺序，深色数字为切割序号。
           </p>
           <p>3. 本单由管切算生成，原料利用率按零件净长 / 原料总长计算，重量为估算值。</p>
         </div>

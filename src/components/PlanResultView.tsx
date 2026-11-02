@@ -9,11 +9,8 @@ import {
 } from 'lucide-react';
 import { BarDiagram } from './BarDiagram';
 import { Badge, StatCard } from './ui';
-import {
-  formatNumber,
-  formatPercent,
-  formatWeight,
-} from '../../shared/format';
+import { formatNumber, formatPercent, formatWeight } from '../../shared/format';
+import { formatBarRange, groupBars } from '../../shared/group';
 import { METHOD_RULES, type PlanResult } from '../../shared/types';
 
 function utilizationTone(value: number): 'green' | 'orange' | 'red' {
@@ -40,6 +37,7 @@ export function PlanResultView({
     (sum, summary) => sum + summary.shortageBars,
     0,
   );
+  const patternGroups = groupBars(result.bars);
 
   return (
     <div className="plan-result">
@@ -186,92 +184,116 @@ export function PlanResultView({
       <section className="bars-section">
         <div className="section-title-row">
           <div>
-            <h3>逐根排样</h3>
-            <p>从左到右为切割顺序；斜纹为余料，网格为夹持区。</p>
+            <h3>排样方案</h3>
+            <p>相同排样已合并，标注重复根数；从左到右为单根切割顺序。</p>
           </div>
-          <span className="section-count">{result.bars.length} 根原料</span>
+          <span className="section-count">
+            {patternGroups.length} 种排样 / {result.bars.length} 根原料
+          </span>
         </div>
 
-        {result.bars.length === 0 ? (
+        {patternGroups.length === 0 ? (
           <div className="panel empty-inline">
             <Scissors size={22} />
             <p>没有生成可执行的排样，请检查上面提示。</p>
           </div>
         ) : (
           <div className="bar-list">
-            {result.bars.map((bar) => (
-              <article className="bar-card" key={bar.barNo}>
-                <header className="bar-card-head">
-                  <div className="bar-card-title">
-                    <span className="bar-no">#{String(bar.barNo).padStart(2, '0')}</span>
-                    <div>
-                      <strong>
-                        {bar.materialCode} · {bar.materialName}
-                      </strong>
+            {patternGroups.map((group) => {
+              const bar = group.sample;
+              const repeated = group.count > 1;
+              return (
+                <article className={`bar-card${repeated ? ' is-grouped' : ''}`} key={group.key}>
+                  <header className="bar-card-head">
+                    <div className="bar-card-title">
+                      <span className="bar-no">{formatBarRange(group.barNos)}</span>
+                      <div>
+                        <strong>
+                          {bar.materialCode} · {bar.materialName}
+                        </strong>
+                        <span>
+                          {bar.spec} · {bar.grade}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="bar-card-meta">
+                      {repeated ? <Badge tone="blue">同排样 ×{group.count} 根</Badge> : null}
+                      <Badge tone={utilizationTone(bar.utilization)}>
+                        利用率 {formatPercent(bar.utilization)}
+                      </Badge>
                       <span>
-                        {bar.spec} · {bar.grade}
+                        {repeated
+                          ? `单根余料 ${formatNumber(bar.leftoverLength, 0)} mm · 合计 ${formatNumber(
+                              group.totalLeftoverLength,
+                              0,
+                            )} mm`
+                          : `余料 ${formatNumber(bar.leftoverLength, 0)} mm`}
                       </span>
                     </div>
-                  </div>
-                  <div className="bar-card-meta">
-                    <Badge tone={utilizationTone(bar.utilization)}>
-                      利用率 {formatPercent(bar.utilization)}
-                    </Badge>
-                    <span>余料 {formatNumber(bar.leftoverLength, 0)} mm</span>
-                  </div>
-                </header>
+                  </header>
 
-                <BarDiagram bar={bar} />
-
-                <div className="cut-chips">
-                  {bar.pieces.map((piece) => (
-                    <span className="cut-chip" key={`${bar.barNo}-${piece.sequence}`}>
-                      <b>{piece.sequence}</b>
-                      {piece.partCode}
-                      <em>{formatNumber(piece.length, 0)}</em>
-                    </span>
-                  ))}
-                  <span className="cut-chip is-waste">
-                    余料
-                    <em>{formatNumber(bar.leftoverLength, 0)}</em>
-                  </span>
-                  {bar.clampLength > 0 ? (
-                    <span className="cut-chip is-clamp">
-                      夹持
-                      <em>{formatNumber(bar.clampLength, 0)}</em>
-                    </span>
+                  {repeated ? (
+                    <div className="repeat-note">
+                      该排样重复 {group.count} 根（{formatBarRange(group.barNos)}），单根零件重{' '}
+                      {formatWeight(bar.weightKg)}，合计 {formatWeight(group.totalWeightKg)}；下图为一根示意。
+                    </div>
                   ) : null}
-                </div>
 
-                <details className="bar-details">
-                  <summary>切割明细（{bar.pieces.length} 件）</summary>
-                  <div className="table-wrap">
-                    <table className="data-table compact">
-                      <thead>
-                        <tr>
-                          <th>序号</th>
-                          <th>零件编号</th>
-                          <th>名称</th>
-                          <th>切割长度</th>
-                          <th>单件重量</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {bar.pieces.map((piece) => (
-                          <tr key={`${bar.barNo}-detail-${piece.sequence}`}>
-                            <td>{piece.sequence}</td>
-                            <td>{piece.partCode}</td>
-                            <td>{piece.partName}</td>
-                            <td>{formatNumber(piece.length, 1)} mm</td>
-                            <td>{formatWeight(piece.weightKg)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <BarDiagram bar={bar} />
+
+                  <div className="cut-chips">
+                    {bar.pieces.map((piece) => (
+                      <span className="cut-chip" key={`${group.key}-${piece.sequence}`}>
+                        <b>{piece.sequence}</b>
+                        {piece.partCode}
+                        <em>{formatNumber(piece.length, 0)}</em>
+                      </span>
+                    ))}
+                    <span className="cut-chip is-waste">
+                      余料
+                      <em>{formatNumber(bar.leftoverLength, 0)}</em>
+                    </span>
+                    {bar.clampLength > 0 ? (
+                      <span className="cut-chip is-clamp">
+                        夹持
+                        <em>{formatNumber(bar.clampLength, 0)}</em>
+                      </span>
+                    ) : null}
                   </div>
-                </details>
-              </article>
-            ))}
+
+                  <details className="bar-details">
+                    <summary>
+                      单根切割明细（{bar.pieces.length} 件）
+                      {repeated ? ` · 共 ${group.count} 根` : ''}
+                    </summary>
+                    <div className="table-wrap">
+                      <table className="data-table compact">
+                        <thead>
+                          <tr>
+                            <th>序号</th>
+                            <th>零件编号</th>
+                            <th>名称</th>
+                            <th>切割长度</th>
+                            <th>单件重量</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bar.pieces.map((piece) => (
+                            <tr key={`${group.key}-detail-${piece.sequence}`}>
+                              <td>{piece.sequence}</td>
+                              <td>{piece.partCode}</td>
+                              <td>{piece.partName}</td>
+                              <td>{formatNumber(piece.length, 1)} mm</td>
+                              <td>{formatWeight(piece.weightKg)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </details>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
