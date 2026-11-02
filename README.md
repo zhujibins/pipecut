@@ -1,0 +1,3 @@
+# pipecut
+
+Initializing repository.
